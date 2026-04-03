@@ -1,6 +1,20 @@
 use backend::*;
 use chrono::{TimeZone, Utc};
 
+/// Creates an in-memory `SqliteDataProvide` pre-populated with two entries.
+///
+/// The provider is backed by an in-memory SQLite database and contains:
+/// - Entry 1: timestamp = now, title = "Title 1", tags = ["Tag_1", "Tag_2"], priority = None, content = "Content entry 1".
+/// - Entry 2: timestamp = 2023-03-23 01:01:01 UTC, title = "Title 2", tags = [], priority = Some(1), content = "Content entry 2".
+///
+/// # Examples
+///
+/// ```
+/// let rt = tokio::runtime::Runtime::new().unwrap();
+/// let provider = rt.block_on(create_provider_with_two_entries());
+/// let entries = rt.block_on(provider.load_all_entries()).unwrap();
+/// assert_eq!(entries.len(), 2);
+/// ```
 async fn create_provider_with_two_entries() -> SqliteDataProvide {
     let provider = create_provider().await;
 

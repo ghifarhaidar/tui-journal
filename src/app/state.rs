@@ -16,6 +16,18 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Load persisted application state from disk, migrating a legacy state file when needed.
+    ///
+    /// If a persisted `state.json` exists at the configured persistence path, it is deserialized
+    /// and returned. If no state file is present, a default `AppState` is returned with
+    /// `folder_nav_mode` initialized from `settings.folder_nav_mode`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let settings = Settings::default();
+    /// let state = AppState::load(&settings).unwrap();
+    /// ```
     pub fn load(settings: &Settings) -> anyhow::Result<Self> {
         // Move state file from legacy data directory to the new state directory
         // to avoid breaking changes on users.

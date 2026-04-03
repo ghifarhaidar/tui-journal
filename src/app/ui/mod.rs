@@ -126,6 +126,20 @@ impl UIComponents<'_> {
         !self.popup_stack.is_empty()
     }
 
+    /// Set the currently active entry and synchronize visible UI state.
+    ///
+    /// Updates `app.current_entry_id` to `entry_id`. If `entry_id` is `Some(id)` and
+    /// `app.state.folder_nav_mode` is `false`, selects the corresponding index in the
+    /// flat `entries_list`. Always forwards the new current entry to the editor via
+    /// `editor.set_current_entry`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Given `ui: UIComponents` and `app: App` are initialized:
+    /// ui.set_current_entry(Some(42), &mut app);
+    /// assert_eq!(app.current_entry_id, Some(42));
+    /// ```
     pub fn set_current_entry<D: DataProvider>(&mut self, entry_id: Option<u32>, app: &mut App<D>) {
         app.current_entry_id = entry_id;
         if let Some(id) = entry_id {
@@ -140,6 +154,24 @@ impl UIComponents<'_> {
         self.editor.set_current_entry(entry_id, app);
     }
 
+    /// Renders the entire application UI (main area, footer, and any active popup) into the given frame.
+    ///
+    /// The function lays out a vertical split for content and footer, renders the footer, then:
+    /// - In full-screen mode: renders either the entries list or the editor depending on the active control.
+    /// - In split mode: renders the entries list on the left and either the editor or a folder information panel
+    ///   on the right (the folder panel is shown when folder-navigation mode is enabled and a folder is selected).
+    /// Finally, the topmost popup (if any) is rendered above the rest of the UI.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Called from the terminal drawing loop with a `Frame` and the application state.
+    /// # use your_crate::ui::UIComponents;
+    /// # let mut ui: UIComponents = unimplemented!();
+    /// # let mut frame = unimplemented!();
+    /// # let app = unimplemented!();
+    /// ui.render_ui(&mut frame, &app);
+    /// ```
     pub fn render_ui<D>(&mut self, f: &mut Frame, app: &App<D>)
     where
         D: DataProvider,
@@ -197,6 +229,18 @@ impl UIComponents<'_> {
         self.render_popup(f);
     }
 
+    /// Renders the popup on top of the popup stack, if any.
+    ///
+    /// The topmost popup (if present) is rendered to the full frame area. Popups that require styling
+    /// receive this component's `styles` when rendered.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Assuming `ui` is a UIComponents instance and `frame` is a mutable Frame.
+    /// // If a popup is on `ui.popup_stack`, this will render it to `frame`.
+    /// ui.render_popup(&mut frame);
+    /// ```
     pub fn render_popup(&mut self, f: &mut Frame) {
         if let Some(popup) = self.popup_stack.last_mut() {
             match popup {
@@ -277,6 +321,27 @@ impl UIComponents<'_> {
         }
     }
 
+    /// Process a single input event for the topmost popup, applying or discarding the popup's result and updating UI and app state as needed.
+    ///
+    /// This inspects the popup at the top of the popup stack (if any), forwards `input` to that popup's handler, and reacts to the popup's outcome by keeping or popping the popup, applying changes to `app` (filters, sorts, view mode, exports, folder rename, current-entry selection, etc.), and resuming any pending command when a message box is closed.
+    ///
+    /// # Returns
+    ///
+    /// `Handled` if a popup was present and the input was processed, `NotFound` if there was no active popup.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use anyhow::Result;
+    /// # async fn _example() -> Result<()> {
+    /// // Assume `ui` is a UIComponents with a popup pushed and `app` is available.
+    /// // let mut ui = UIComponents::new(...);
+    /// // ui.popup_stack.push(Popup::Help(...));
+    /// // let input = Input::default();
+    /// // let res = ui.handle_popup_input(&input, &mut app).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     async fn handle_popup_input<D: DataProvider>(
         &mut self,
         input: &Input,
@@ -444,6 +509,17 @@ impl UIComponents<'_> {
         }
     }
 
+    /// Switches which UI control is active, deactivating the previously active control and activating the specified one.
+    ///
+    /// This updates internal active state and calls the activation/deactivation hooks for the affected controls.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let mut ui = /* obtain or construct a UIComponents instance */ unimplemented!();
+    /// ui.change_active_control(ControlType::EntryContentTxt);
+    /// assert_eq!(ui.active_control, ControlType::EntryContentTxt);
+    /// ```
     pub fn change_active_control(&mut self, control: ControlType) {
         if self.active_control == control {
             return;
@@ -455,6 +531,23 @@ impl UIComponents<'_> {
         self.set_control_is_active(control, true);
     }
 
+    /// Switches UI focus to the editor and sets the editor into insert mode.
+    ///
+    /// Panics if the editor is already in insert mode.
+    ///
+    /// # Returns
+    ///
+    /// `Handled` to indicate the input was handled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use crate::app::ui::{UIComponents, HandleInputReturnType};
+    /// # fn example(mut ui: UIComponents) {
+    /// let res = ui.start_edit_current_entry().unwrap();
+    /// assert_eq!(res, HandleInputReturnType::Handled);
+    /// # }
+    /// ```
     fn start_edit_current_entry(&mut self) -> Result<HandleInputReturnType> {
         self.change_active_control(ControlType::EntryContentTxt);
 
@@ -490,10 +583,34 @@ impl UIComponents<'_> {
         self.editor.has_unsaved()
     }
 
+    /// Show an error message box containing the provided text.
+    ///
+    /// The message box uses an `Ok` action and does not set any pending command.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // construct `styles` and `ui` according to your application setup
+    /// let mut ui = UIComponents::new(Styles::default());
+    /// ui.show_err_msg("Failed to save entry".into());
+    /// ```
     pub fn show_err_msg(&mut self, err_txt: String) {
         self.show_msg_box(MsgBoxType::Error(err_txt), MsgBoxActions::Ok, None);
     }
 
+    /// Ensure the UI's selected entry is synchronized with the application's state.
+    ///
+    /// If the app is in folder-navigation mode, synchronize the entries list with the folder state and
+    /// update the editor selection only if the app's `current_entry_id` changed during that sync.
+    /// Otherwise, if no current entry is set, select the first active entry (if any) and make it current.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // `ui` is a mutable UIComponents instance and `app` is a mutable App implementing DataProvider.
+    /// // This will synchronize UI selection with the app's current entry and folder navigation state.
+    /// ui.update_current_entry(&mut app);
+    /// ```
     pub fn update_current_entry<D: DataProvider>(&mut self, app: &mut App<D>) {
         if app.state.folder_nav_mode {
             let prev_id = app.current_entry_id;
@@ -507,11 +624,38 @@ impl UIComponents<'_> {
         }
     }
 
+    /// Synchronizes the entries-list folder navigation state with the application's current tag/folder state.
+    ///
+    /// This updates the UI's folder navigation (folder path, selection and visible entries) to reflect the
+    /// current application state.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // assume `ui` is a mutable UIComponents and `app` is a mutable App<D>
+    /// ui.sync_folder_nav_state(&mut app);
+    /// ```
     pub fn sync_folder_nav_state<D: DataProvider>(&mut self, app: &mut App<D>) {
         self.entries_list.sync_folder_nav_state(app);
     }
 
-    /// Switch between flat-list view and folder navigation view.
+    /// Toggle the UI between flat-list view and folder navigation view.
+    ///
+    /// When switching into folder navigation mode, this clears the current folder
+    /// path, selects the first folder in the folder list, synchronizes the folder
+    /// navigation state with the app, and updates the currently highlighted entry.
+    /// When switching back to flat-list mode, this restores the entries list
+    /// highlighting for the current entry. If the requested mode already matches
+    /// the active mode, no changes are made.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Assume `ui` is a `UIComponents`, `app` implements `DataProvider`,
+    /// // and `ViewMode` is in scope.
+    /// ui.apply_view_mode(ViewMode::Folder, &mut app);
+    /// ui.apply_view_mode(ViewMode::Flat, &mut app);
+    /// ```
     pub fn apply_view_mode<D: DataProvider>(&mut self, mode: ViewMode, app: &mut App<D>) {
         let was_folder = app.state.folder_nav_mode;
         let is_folder = mode == ViewMode::Folder;
@@ -536,6 +680,20 @@ impl UIComponents<'_> {
         }
     }
 
+    /// Renders a folder information panel into the given area.
+    ///
+    /// The panel shows the folder path, number of subfolders, number of journal entries
+    /// contained in the folder, and a list of keyboard action hints. It queries the
+    /// application's tag tree and entry store to compute the counts and uses the
+    /// current entries-list folder path combined with `folder_name` as the displayed path.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// // Render folder info for a folder named "Inbox"
+    /// let folder_name = "Inbox".to_string();
+    /// ui.render_folder_info(&mut frame, area, folder_name, &app);
+    /// ```
     fn render_folder_info<D: DataProvider>(
         &self,
         f: &mut Frame,

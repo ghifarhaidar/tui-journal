@@ -18,7 +18,17 @@ pub struct TagTree {
 }
 
 impl TagTree {
-    /// Build a `TagTree` from an iterator of entries.
+    /// Builds a TagTree from an iterator of `Entry` references.
+    ///
+    /// The returned tree contains each entry's `id` placed at the node corresponding to the entry's folder path; entries whose `folder` is empty or contains only slashes are placed at the root.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Build an empty tree from no entries.
+    /// let tree = crate::app::tag_tree::TagTree::build(vec![].into_iter());
+    /// assert!(tree.entry_ids.is_empty());
+    /// ```
     pub fn build<'a>(entries: impl Iterator<Item = &'a Entry>) -> Self {
         let mut root = TagTree::default();
 
@@ -40,7 +50,21 @@ impl TagTree {
         root
     }
 
-    /// Insert `entry_id` at the deepest node described by `path`.
+    /// Place an entry ID into the tree at the node indicated by `path`.
+    ///
+    /// If intermediate folder nodes do not exist they are created; an empty `path` inserts
+    /// the `entry_id` into the current node's `entry_ids`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    /// let mut root = crate::app::tag_tree::TagTree { subfolders: BTreeMap::new(), entry_ids: Vec::new() };
+    /// root.insert_entry(42, &["a", "b"]);
+    /// let node_a = root.subfolders.get("a").unwrap();
+    /// let node_b = node_a.subfolders.get("b").unwrap();
+    /// assert_eq!(node_b.entry_ids, vec![42]);
+    /// ```
     fn insert_entry(&mut self, entry_id: u32, path: &[&str]) {
         match path {
             [] => {
@@ -59,8 +83,29 @@ impl TagTree {
         }
     }
 
-    /// Navigate to a descendant node given a slice of folder-name segments.
-    /// Returns `None` if the path doesn't exist.
+    /// Locate a descendant `TagTree` node by a sequence of folder-name segments.
+    ///
+    /// # Returns
+    ///
+    /// `Some(&TagTree)` for the node at the given path, `None` if any segment in the path
+    /// does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    ///
+    /// // build a simple tree with a single child "a" that contains entry id 42
+    /// let mut root = TagTree { subfolders: BTreeMap::new(), entry_ids: vec![] };
+    /// root.subfolders.insert(
+    ///     "a".into(),
+    ///     TagTree { subfolders: BTreeMap::new(), entry_ids: vec![42] },
+    /// );
+    ///
+    /// let path = vec![String::from("a")];
+    /// let node = root.get_node(&path).unwrap();
+    /// assert_eq!(node.entry_ids, vec![42]);
+    /// ```
     pub fn get_node(&self, path: &[String]) -> Option<&TagTree> {
         if path.is_empty() {
             return Some(self);
@@ -70,7 +115,19 @@ impl TagTree {
             .and_then(|child| child.get_node(&path[1..]))
     }
 
-    /// Sorted subfolder names at this node.
+    /// Returns the immediate subfolder names at this node in sorted order.
+    ///
+    /// The names are ordered according to the `BTreeMap` key ordering.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut root = TagTree { subfolders: std::collections::BTreeMap::new(), entry_ids: vec![] };
+    /// root.subfolders.insert("b".to_string(), TagTree { subfolders: Default::default(), entry_ids: vec![] });
+    /// root.subfolders.insert("a".to_string(), TagTree { subfolders: Default::default(), entry_ids: vec![] });
+    /// let names = root.subfolder_names();
+    /// assert_eq!(names, vec!["a", "b"]);
+    /// ```
     pub fn subfolder_names(&self) -> Vec<&str> {
         self.subfolders.keys().map(String::as_str).collect()
     }
@@ -82,6 +139,16 @@ mod tests {
 
     use super::*;
 
+    /// Creates a test Entry with the given `id` and `folder`, using fixed dummy metadata (fixed timestamp,
+    /// title "Entry {id}", empty body, empty tags, and no parent).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let e = make_entry(42, "rust/project");
+    /// assert_eq!(e.id, 42);
+    /// assert_eq!(e.folder, "rust/project");
+    /// ```
     fn make_entry(id: u32, folder: &str) -> Entry {
         Entry::new(
             id,

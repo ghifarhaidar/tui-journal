@@ -105,6 +105,18 @@ mod test {
 
     use super::*;
 
+    /// Returns a small preset collection of `Entry` instances used by unit tests.
+    ///
+    /// The returned vector contains three entries with deterministic `id`, `date`,
+    /// `title`, `content`, `tags`, and `priority` values suitable for sorting tests.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let entries = get_default_entries();
+    /// assert_eq!(entries.len(), 3);
+    /// assert_eq!(entries[0].id, 0);
+    /// ```
     fn get_default_entries() -> Vec<Entry> {
         vec![
             Entry::new(

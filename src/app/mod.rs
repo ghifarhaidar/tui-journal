@@ -139,6 +139,30 @@ where
         Ok(())
     }
 
+    /// Creates a new entry with the given title, date, tags, optional priority, and folder, persists it, and registers the action in history.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # async fn run_example() -> anyhow::Result<()> {
+    /// let mut app = /* obtain App instance implementing DataProvider */ todo!();
+    /// let id = app
+    ///     .add_entry(
+    ///         "Note".into(),
+    ///         chrono::Utc::now(),
+    ///         vec!["work".into()],
+    ///         Some(1),
+    ///         "projects".into(),
+    ///     )
+    ///     .await?;
+    /// assert!(id > 0);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// `u32` ID of the created entry.
     pub async fn add_entry(
         &mut self,
         title: String,
@@ -151,8 +175,30 @@ where
             .await
     }
 
-    /// Creates an [`Entry`] from the given arguments, registering the change to the provided
-    /// [`HistoryStack`].
+    /// Create and persist a new `Entry` from the provided fields and record the addition in the history.
+    ///
+    /// Also registers the change in the given `HistoryStack`, appends the created entry to the in-memory
+    /// list, re-sorts entries, refreshes filtered-out entries, and updates colored-tag mappings.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use chrono::Utc;
+    /// # use crate::app::{App, HistoryStack};
+    /// # async fn example(app: &mut App<_>) -> anyhow::Result<u32> {
+    /// let id = app.add_entry_intern(
+    ///     "Title".into(),
+    ///     Utc::now(),
+    ///     vec!["tag1".into(), "tag2".into()],
+    ///     Some(1),
+    ///     "folder/sub".into(),
+    ///     Some("content".into()),
+    ///     HistoryStack::Undo,
+    /// ).await?;
+    /// assert!(id > 0);
+    /// # Ok(id)
+    /// # }
+    /// ```
     async fn add_entry_intern(
         &mut self,
         title: String,
@@ -184,7 +230,29 @@ where
         Ok(entry_id)
     }
 
-    /// Updates the attributes of the currently selected [`Entry`]
+    /// Update the attributes (title, date, tags, priority, folder) of the currently selected entry.
+    ///
+    /// The function acts on whichever entry ID is stored in `self.current_entry_id` and persists the
+    /// change via the configured data provider.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the update succeeds, or an error if no current entry is set or persistence fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use chrono::Utc;
+    /// # async fn example(mut app: crate::App<impl crate::data::DataProvider>) {
+    /// app.update_current_entry_attributes(
+    ///     "New title".into(),
+    ///     Utc::now(),
+    ///     vec!["tag1".into(), "tag2".into()],
+    ///     Some(2),
+    ///     "projects/rust".into(),
+    /// ).await.unwrap();
+    /// # }
+    /// ```
     pub async fn update_current_entry_attributes(
         &mut self,
         title: String,
@@ -208,8 +276,36 @@ where
         .await
     }
 
-    /// Updates the attributes of the given [`Entry`], registering its state before the change on
-    /// the given [`HistoryStack`]
+    /// Update an entry's title, date, tags, priority, and folder, persist the change, and refresh dependent state.
+    ///
+    /// The entry's state before mutation is recorded on the provided `history_target` so the change can be undone or redone. After persisting the updated entry the method re-sorts entries, refreshes the active filter and filtered-out entry set, and updates colored-tag mappings.
+    ///
+    /// # Parameters
+    /// - `entry_id`: Identifier of the entry to update.
+    /// - `title`, `date`, `tags`, `priority`, `folder`: New attribute values to set on the entry.
+    /// - `history_target`: Specifies which history stack (`Undo` or `Redo`) should record the entry's prior state.
+    ///
+    /// # Returns
+    /// `Ok(())` on success, or an error if persistence fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chrono::Utc;
+    ///
+    /// // assume `app` is a mutable App instance and `HistoryStack` is in scope
+    /// # async fn _example(app: &mut crate::app::App<impl crate::app::DataProvider>) {
+    /// app.update_entry_attributes(
+    ///     1,
+    ///     "Updated title".into(),
+    ///     Utc::now(),
+    ///     vec!["tag1".into(), "tag2".into()],
+    ///     Some(5),
+    ///     "notes/personal".into(),
+    ///     crate::app::HistoryStack::Undo,
+    /// ).await.unwrap();
+    /// # }
+    /// ```
     async fn update_entry_attributes(
         &mut self,
         entry_id: u32,
@@ -247,8 +343,22 @@ where
         Ok(())
     }
 
-    /// Update the content of the given [`Entry`], registering its previous content to the given
-    /// [`HistoryStack`]
+    /// Updates the content of the entry with the given ID and records its previous content in the specified history stack.
+    ///
+    /// The updated entry is persisted via the data provider and the active filter state is refreshed after the update.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if persisting the updated entry fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use crate::app::HistoryStack;
+    /// # async fn example(mut app: crate::app::App<impl crate::app::DataProvider>) {
+    /// app.update_entry_content(42, "Updated body".into(), HistoryStack::Undo).await.unwrap();
+    /// # }
+    /// ```
     pub async fn update_entry_content(
         &mut self,
         entry_id: u32,
@@ -347,6 +457,17 @@ where
         Ok(())
     }
 
+    /// Collects all unique tag names from the app's entries and returns them in sorted order.
+    ///
+    /// The returned list contains each distinct tag exactly once, sorted ascending.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Assuming `app` is an instance with entries populated:
+    /// let tags: Vec<String> = app.get_all_tags();
+    /// // `tags` now holds unique, sorted tag names, e.g. ["bug", "feature", "urgent"]
+    /// ```
     pub fn get_all_tags(&self) -> Vec<String> {
         let mut tags = BTreeSet::new();
 
@@ -357,6 +478,17 @@ where
         tags.into_iter().map(String::from).collect()
     }
 
+    /// Returns a sorted list of unique, non-empty folder paths present in the entries.
+    ///
+    /// The returned vector contains each folder exactly once, ordered lexicographically.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Assuming `app` is an instance with entries having `folder` values:
+    /// let folders = app.get_all_folders();
+    /// // e.g. folders -> vec!["docs".to_string(), "projects/alpha".to_string()]
+    /// ```
     pub fn get_all_folders(&self) -> Vec<String> {
         let mut folders = BTreeSet::new();
 
@@ -369,18 +501,38 @@ where
         folders.into_iter().map(String::from).collect()
     }
 
-    /// Build a `TagTree` from the currently active (non-filtered-out) entries.
+    /// Builds a TagTree reflecting tags from the currently active (non-filtered-out) entries.
+    ///
+    /// The returned TagTree includes only tags present on entries that are not filtered out by the
+    /// application's current filter state.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Given an `app: App<_>` with entries loaded and filters applied:
+    /// let tag_tree = app.get_tag_tree();
+    /// // `tag_tree` now represents the tag hierarchy for the active entries.
+    /// ```
     pub fn get_tag_tree(&self) -> TagTree {
         TagTree::build(self.get_active_entries())
     }
 
-    /// Returns active entries whose folder matches exactly the given folder
-    /// `path` in the hierarchy.
+    /// Iterates active entries whose folder exactly equals the provided path.
     ///
-    /// * An empty `path` returns entries with **no folder** (root-level entries).
-    /// * A non-empty `path` returns entries that have a folder equal to the
-    ///   joined path segments with `/` (e.g. path `["work", "project"]` matches
-    ///   entries with folder `work/project`).
+    /// An empty `path` matches entries with no folder (root-level entries). A
+    /// non-empty `path` matches entries whose `folder` equals the segments joined
+    /// with `/` (for example `["work", "project"]` matches `work/project`).
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Return root-level entries:
+    /// let root = app.get_entries_in_folder(&[]);
+    ///
+    /// // Return entries in "work/project":
+    /// let segs = vec!["work".to_string(), "project".to_string()];
+    /// let project_entries = app.get_entries_in_folder(&segs);
+    /// ```
     pub fn get_entries_in_folder<'a>(
         &'a self,
         path: &'a [String],
@@ -395,7 +547,18 @@ where
             .filter(move |entry| entry.folder == expected_folder)
     }
 
-    /// Sets and applies the given filter on the entries
+    /// Apply a new filter to the application and update the set of entries that are filtered out.
+    ///
+    /// This replaces the current filter with `filter` and recomputes which entries should be hidden.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Given a mutable `app: App<_>` and a `filter: Filter`:
+    /// app.apply_filter(Some(filter));
+    /// // or clear filtering:
+    /// app.apply_filter(None);
+    /// ```
     pub fn apply_filter(&mut self, filter: Option<Filter>) {
         self.filter = filter;
         self.update_filtered_out_entries();
@@ -589,6 +752,27 @@ where
         }
     }
 
+    /// Applies a single history change to the application state, performing the inverse or redo operation represented by `change`.
+    ///
+    /// The function executes the concrete operation described by the `Change` (add, remove, modify attributes, or modify content)
+    /// and registers its effects on the given `history_target` stack as appropriate.
+    ///
+    /// # Returns
+    ///
+    /// `Some(entry_id)` when the applied change refers to or produces an entry ID, `None` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Given a mutable `app: App<_>` and a history change:
+    /// // let mut app = /* App::new(...) */;
+    /// // let change = Change::AddEntry { id: 42 };
+    /// // This shows the call pattern; types and construction depend on your application setup.
+    /// let result = futures::executor::block_on(async {
+    ///     app.apply_history_change(change, HistoryStack::Undo).await.unwrap()
+    /// });
+    /// // `AddEntry` undo returns `None`; other change kinds may return `Some(id)`.
+    /// ```
     async fn apply_history_change(
         &mut self,
         change: Change,
@@ -640,6 +824,30 @@ where
         }
     }
 
+    /// Renames a folder in persistent storage and updates all in-memory entries' folder paths.
+    ///
+    /// Persists the rename operation via the data provider, then updates each entry:
+    /// - entries whose folder exactly equals `old_path` are set to `new_path`
+    /// - entries in subfolders of `old_path` (prefix `old_path/`) have that prefix replaced with `new_path/`
+    /// After updating entries, the function re-sorts entries and refreshes filtered-out entries.
+    ///
+    /// # Parameters
+    ///
+    /// - `old_path`: the existing folder path to rename (exact match or prefix for subfolders).
+    /// - `new_path`: the new folder path to apply.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if the underlying persistence operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example(mut app: App<MyProvider>) -> anyhow::Result<()> {
+    /// app.rename_folder("projects/old", "projects/new").await?;
+    /// Ok(())
+    /// # }
+    /// ```
     pub async fn rename_folder(&mut self, old_path: &str, new_path: &str) -> anyhow::Result<()> {
         log::trace!("Renaming folder {} to {}", old_path, new_path);
 
@@ -662,6 +870,30 @@ where
         Ok(())
     }
 
+    /// Deletes the folder identified by `path` and removes any entries that live in that folder or its subfolders.
+    ///
+    /// The `path` is the folder identifier as stored on entries (segments separated by `/`; use an empty
+    /// string to refer to the root). This persists the folder deletion to the data provider, removes
+    /// matching entries from the in-memory list, and refreshes filtering and colored-tag state.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: folder path to delete; entries whose `folder` equals `path` or starts with `path/` will be removed.
+    ///
+    /// # Returns
+    ///
+    /// `()` on success.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Remove the "projects/old" folder and all entries under it.
+    /// // `app` is a mutable App instance.
+    /// # async fn example(mut app: App<impl DataProvider>) -> anyhow::Result<()> {
+    /// app.delete_folder("projects/old").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn delete_folder(&mut self, path: &str) -> anyhow::Result<()> {
         log::trace!("Deleting folder {}", path);
 

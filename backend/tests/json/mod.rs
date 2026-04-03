@@ -2,6 +2,23 @@ use backend::*;
 use chrono::{TimeZone, Utc};
 use tempfile::{Builder, NamedTempFile};
 
+/// Creates a `JsonDataProvide` backed by the provided temporary file and seeds it with two persisted entries.
+///
+/// The seeded entries are:
+/// - Title "Title 1", current UTC timestamp, tags `["Tag_1", "Tag_2"]`, no priority, content "Content entry 1".
+/// - Title "Title 2", timestamp `2023-03-23 01:01:01 UTC`, no tags, priority `1`, content "Content entry 2".
+///
+/// # Examples
+///
+/// ```
+/// use tempfile::NamedTempFile;
+/// # async fn run() {
+/// let temp = NamedTempFile::new().unwrap();
+/// let provider = create_provide_with_two_entries(&temp).await;
+/// let entries = provider.load_all_entries().await.unwrap();
+/// assert_eq!(entries.len(), 2);
+/// # }
+/// ```
 async fn create_provide_with_two_entries(temp_file: &NamedTempFile) -> JsonDataProvide {
     let json_provide = JsonDataProvide::new(temp_file.path().to_path_buf());
     let mut entry_draft_1 = EntryDraft::new(
@@ -43,6 +60,39 @@ async fn create_provider_with_default_entries() {
     assert_eq!(entries[1].priority, Some(1));
 }
 
+/// Verifies that adding an entry appends it to storage and persists its fields.
+///
+/// The test seeds a provider with two entries, adds a third `EntryDraft`, then
+/// reloads all entries to assert the new entry's id, title, content, priority,
+/// and tags are persisted.
+///
+/// # Examples
+///
+/// ```
+/// # use chrono::Utc;
+/// # use tempfile::Builder;
+/// # use your_crate::{create_provide_with_two_entries, EntryDraft};
+/// # tokio_test::block_on(async {
+/// let temp_file = Builder::new().prefix("json_add_entry").tempfile().unwrap();
+/// let provider = create_provide_with_two_entries(&temp_file).await;
+///
+/// let mut entry_draft = EntryDraft::new(
+///     Utc.with_ymd_and_hms(2023, 3, 23, 1, 1, 1).unwrap(),
+///     String::from("Title added"),
+///     vec![String::from("Tag_1"), String::from("Tag_3")],
+///     Some(1),
+///     String::new(),
+/// );
+/// entry_draft.content.push_str("Content entry added");
+///
+/// provider.add_entry(entry_draft).await.unwrap();
+///
+/// let entries = provider.load_all_entries().await.unwrap();
+/// assert_eq!(entries.len(), 3);
+/// assert_eq!(entries[2].title, "Title added");
+/// assert_eq!(entries[2].content, "Content entry added");
+/// # });
+/// ```
 #[tokio::test]
 async fn add_entry() {
     let temp_file = Builder::new().prefix("json_add_entry").tempfile().unwrap();

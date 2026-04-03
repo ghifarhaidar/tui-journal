@@ -66,6 +66,25 @@ fn get_editor_mode_text(ui_components: &UIComponents) -> String {
     )
 }
 
+/// Compose the standard footer text showing relevant keymap hints for the current UI state.
+///
+/// The returned string contains formatted keymap segments joined by `SEPARATOR`. Included segments:
+/// - always: quit/close and help keymaps
+/// - enter-edit keymap when folder navigation is not focused
+/// - when `active_control == ControlType::EntriesList`:
+///   - if focused on a folder: folder-nav back and enter keymaps
+///   - toggle view-mode keymap
+///   - show-filter or reset-filter keymap depending on whether a filter is active
+///   - show-sort-options keymap
+/// - toggle full-screen keymap when the app is in full-screen mode
+///
+/// # Examples
+///
+/// ```
+/// // assume `ui_components` and `app` are available in scope
+/// let footer = get_standard_text(&ui_components, &app);
+/// assert!(footer.contains("Quit"));
+/// ```
 fn get_standard_text<D: DataProvider>(ui_components: &UIComponents, app: &App<D>) -> String {
     let close_keymap: Vec<_> = ui_components
         .global_keymaps

@@ -67,6 +67,17 @@ pub struct Settings {
 }
 
 impl Default for Settings {
+    /// Constructs a Settings value populated with sensible defaults for all configuration fields.
+    ///
+    /// The produced Settings has all optional and feature-gated fields initialized to their default
+    /// values so it is ready for use or further modification.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let settings = Settings::default();
+    /// // settings is now initialized with defaults for export, backend, editor, pagination, etc.
+    /// ```
     fn default() -> Self {
         Self {
             export: Default::default(),
@@ -160,6 +171,27 @@ impl Settings {
             .map_err(|err| anyhow!("Settings couldn't be serialized\nError info: {}", err))
     }
 
+    /// Fills any unset configuration fields on `Settings` with sensible defaults.
+    ///
+    /// This mutates `self` so that optional fields required for normal operation are populated:
+    /// - sets `backend_type` to its default when missing,
+    /// - sets backend file paths to platform-default locations when their `file_path` is missing (feature-gated),
+    /// - sets `scroll_per_page` to `DEFAULT_SCROLL_PER_PAGE` when missing,
+    /// - sets `app_state_dir` to the application's default persist directory when missing.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, `Err` if computing any required default paths fails (propagated from helper functions).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut settings = Settings::default();
+    /// settings.complete_missing_options().unwrap();
+    /// assert!(settings.backend_type.is_some());
+    /// assert!(settings.scroll_per_page.is_some());
+    /// assert!(settings.app_state_dir.is_some());
+    /// ```
     pub fn complete_missing_options(&mut self) -> anyhow::Result<()> {
         // This check is to ensure that all added fields to settings struct are considered here
         #[cfg(all(debug_assertions, feature = "sqlite", feature = "json"))]

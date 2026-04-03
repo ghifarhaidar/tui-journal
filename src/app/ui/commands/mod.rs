@@ -90,6 +90,17 @@ impl CommandInfo {
 }
 
 impl UICommand {
+    /// Provide a human-readable name and short description for this UI command.
+    ///
+    /// The returned `CommandInfo` contains the display `name` and a brief `description` suitable for menus or help text.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let info = UICommand::Quit.get_info();
+    /// assert_eq!(info.name, "Exit");
+    /// assert_eq!(info.description, "Exit the program");
+    /// ```
     pub fn get_info(&self) -> CommandInfo {
         match self {
             UICommand::Quit => CommandInfo::new("Exit", "Exit the program"),
@@ -246,6 +257,20 @@ impl UICommand {
         }
     }
 
+    /// Dispatches the command to its immediate execution handler.
+    ///
+    /// This invokes the appropriate handler for the `UICommand` variant, awaiting async
+    /// handlers when required. Commands that require checking for unsaved entry content
+    /// will show the unsaved-changes dialog instead of executing immediately.
+    /// Returns a `CmdResult` that indicates how input handling should continue.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example<D: DataProvider>(cmd: UICommand, ui_components: &mut UIComponents<'_>, app: &mut App<D>) {
+    /// cmd.execute(ui_components, app).await.unwrap();
+    /// # }
+    /// ```
     pub async fn execute<D: DataProvider>(
         &self,
         ui_components: &mut UIComponents<'_>,
@@ -311,6 +336,25 @@ impl UICommand {
         }
     }
 
+    /// Continues execution of this UI command using the result from an unsaved-changes message box.
+    ///
+    /// This dispatches to the command-specific continuation handler corresponding to the variant,
+    /// applying save/no-save logic when applicable and returning a unified `CmdResult`.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(HandleInputReturnType::Handled)` on completion of the continuation logic.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::app::ui::commands::UICommand;
+    ///
+    /// // Construct a command; continuation requires a UIComponents, App and MsgBoxResult,
+    /// // which are provided by the application runtime when handling the message-box callback.
+    /// let cmd = UICommand::Quit;
+    /// // `cmd.continue_executing(...)` is invoked by the UI runtime after a message-box reply.
+    /// ```
     pub async fn continue_executing<D: DataProvider>(
         &self,
         ui_components: &mut UIComponents<'_>,

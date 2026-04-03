@@ -117,6 +117,30 @@ pub struct EntryAttributes {
 }
 
 impl From<&Entry> for EntryAttributes {
+    /// Creates an `EntryAttributes` snapshot by copying the attribute fields from an `Entry`.
+    ///
+    /// This captures the entry's `id`, `date`, `title`, `tags`, `priority`, and `folder` so the
+    /// resulting `EntryAttributes` is an independent snapshot of those metadata values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chrono::Utc;
+    /// // construct an example Entry (fields shown for illustration; actual Entry type must be in scope)
+    /// let entry = Entry {
+    ///     id: 42,
+    ///     date: Utc::now(),
+    ///     title: "Example".into(),
+    ///     tags: vec!["tag".into()],
+    ///     priority: Some(1),
+    ///     folder: "folder-42".into(),
+    ///     content: String::new(),
+    /// };
+    /// let attrs = EntryAttributes::from(&entry);
+    /// assert_eq!(attrs.id, 42);
+    /// assert_eq!(attrs.title, "Example");
+    /// assert_eq!(attrs.folder, "folder-42");
+    /// ```
     fn from(entry: &Entry) -> Self {
         Self {
             id: entry.id,
@@ -135,6 +159,27 @@ mod tests {
 
     use super::*;
 
+    /// Constructs a deterministic sample `Entry` for tests using the provided `id`.
+    ///
+    /// The returned entry has predictable fields derived from `id`:
+    /// - date: 2024-02-(id+1) 10:11:12 UTC
+    /// - title: `"Title {id}"`
+    /// - content: `"Content {id}"`
+    /// - tags: `vec!["tag-{id}"]`
+    /// - priority: `Some(id)`
+    /// - folder: `"folder-{id}"`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let e = sample_entry(3);
+    /// assert_eq!(e.id, 3);
+    /// assert_eq!(e.title, "Title 3");
+    /// assert_eq!(e.content, "Content 3");
+    /// assert_eq!(e.tags, vec!["tag-3"]);
+    /// assert_eq!(e.priority, Some(3));
+    /// assert_eq!(e.folder, "folder-3");
+    /// ```
     fn sample_entry(id: u32) -> Entry {
         Entry::new(
             id,

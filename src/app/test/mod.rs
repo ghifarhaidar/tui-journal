@@ -9,6 +9,22 @@ use super::*;
 mod mock;
 mod undo_redo;
 
+/// Create two preset `Entry` instances used by the test suite.
+///
+/// The returned vector contains:
+/// - an entry with `id = 0`, timestamp 2023-10-12 11:22:33 UTC, title "Title 1", content "Content 1",
+///   tags ["Tag 1", "Tag 2"], no priority, and an empty folder string.
+/// - an entry with `id = 1`, timestamp 2023-12-02 01:02:03 UTC, title "Title 2", content "Content 2",
+///   no tags, `priority = Some(1)`, and an empty folder string.
+///
+/// # Examples
+///
+/// ```
+/// let entries = get_default_entries();
+/// assert_eq!(entries.len(), 2);
+/// assert_eq!(entries[0].id, 0);
+/// assert_eq!(entries[1].id, 1);
+/// ```
 fn get_default_entries() -> Vec<Entry> {
     vec![
         Entry::new(
@@ -85,6 +101,33 @@ async fn test_get_tags() {
     assert_eq!(app.get_all_tags(), tags);
 }
 
+/// Verifies that adding an entry inserts it into the active list with the correct fields and updates the tag set.
+///
+/// Loads the default entries, adds a new entry with a title, date, tags, priority, and folder, then asserts
+/// the active entry count increases, the inserted entry matches the provided values, and the global tag list grows.
+///
+/// # Examples
+///
+/// ```
+/// let mut app = create_default_app();
+/// app.load_entries().await.unwrap();
+///
+/// let tag = String::from("Added Tag");
+/// let title = String::from("Added Title");
+/// let date = Utc::now();
+///
+/// app.add_entry(title.clone(), date, vec![tag.clone()], Some(1), String::new())
+///     .await
+///     .unwrap();
+///
+/// assert_eq!(app.get_active_entries().count(), 3);
+/// let added_entry = app.get_active_entries().find(|e| e.id == 2).unwrap();
+/// assert_eq!(added_entry.title, title);
+/// assert_eq!(added_entry.date, date);
+/// assert_eq!(added_entry.tags, vec![tag]);
+/// assert_eq!(added_entry.priority, Some(1));
+/// assert_eq!(app.get_all_tags().len(), 3);
+/// ```
 #[tokio::test]
 async fn test_add_entry() {
     let mut app = create_default_app();
@@ -134,6 +177,25 @@ async fn test_current_entry() {
     assert_eq!(current_entry.title, String::from("Title 1"));
 }
 
+/// Adds three predefined entry drafts to the provided app.
+///
+/// Each draft has a fixed timestamp, title, tags, priority, and an empty folder.
+/// This helper is used in tests to populate the app with additional entries.
+///
+/// # Examples
+///
+/// ```
+/// # use chrono::Utc;
+/// # use crate::tests::mock::MockDataProvider;
+/// # use crate::App;
+/// # async fn run_example() {
+/// let mut app = crate::tests::create_default_app();
+/// // Populate the app with three extra entries.
+/// crate::tests::add_extra_entries_drafts(&mut app).await;
+/// let count: usize = app.get_active_entries().count();
+/// assert!(count >= 3);
+/// # }
+/// ```
 async fn add_extra_entries_drafts(app: &mut App<MockDataProvider>) {
     let drafts = [
         EntryDraft::new(

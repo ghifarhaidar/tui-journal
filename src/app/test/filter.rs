@@ -219,6 +219,23 @@ async fn cycle_tag_exact() {
     }
 }
 
+/// Ensures cycling tags adds a tag criterion to an existing filter while preserving other criteria.
+///
+/// This test verifies that calling `cycle_tags_in_filter()` when a filter already exists
+/// will append exactly one tag-based criterion and leave existing non-tag criteria intact.
+///
+/// # Examples
+///
+/// ```
+/// // Setup an app with entries and an existing title filter, then cycle tags:
+/// let mut app = create_default_app();
+/// app.load_entries().await.unwrap();
+/// let mut filter = Filter::default();
+/// filter.criteria.push(FilterCriterion::Title("Title".into()));
+/// app.apply_filter(Some(filter));
+/// app.cycle_tags_in_filter();
+/// assert!(app.filter.is_some());
+/// ```
 #[tokio::test]
 async fn cycle_tag_existing_filter() {
     // default project has two tags "Tag 1" "Tag 2"

@@ -30,6 +30,42 @@ pub trait DataProvider {
     async fn remove_entry(&self, entry_id: u32) -> anyhow::Result<()>;
     async fn update_entry(&self, entry: Entry) -> Result<Entry, ModifyEntryError>;
     async fn get_export_object(&self, entries_ids: &[u32]) -> anyhow::Result<EntriesDTO>;
+    /// Imports the given transfer object by adding each contained entry draft to the provider in order.
+    ///
+    /// The function asserts in debug builds that `entries_dto.version` matches `TRANSFER_DATA_VERSION`.
+    /// It iterates `entries_dto.entries` in sequence and calls `add_entry` for each draft; iteration stops
+    /// and the first encountered error is returned.
+    ///
+    /// # Parameters
+    ///
+    /// - `entries_dto`: Transfer object containing a version tag and the list of `EntryDraft` items to import.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if all drafts were added successfully, otherwise the first error returned by `add_entry`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use backend::{EntriesDTO, EntryDraft, DataProvider, TRANSFER_DATA_VERSION};
+    /// # struct Stub;
+    /// # #[async_trait::async_trait]
+    /// # impl DataProvider for Stub {
+    /// #     async fn load_all_entries(&self) -> anyhow::Result<Vec<backend::Entry>> { unreachable!() }
+    /// #     async fn add_entry(&self, _entry: EntryDraft) -> Result<backend::Entry, backend::ModifyEntryError> { Ok(backend::Entry::from_draft(1, _entry)) }
+    /// #     async fn remove_entry(&self, _entry_id: u32) -> anyhow::Result<()> { unreachable!() }
+    /// #     async fn update_entry(&self, _entry: backend::Entry) -> Result<backend::Entry, backend::ModifyEntryError> { unreachable!() }
+    /// #     async fn get_export_object(&self, _entries_ids: &[u32]) -> anyhow::Result<EntriesDTO> { unreachable!() }
+    /// #     async fn assign_priority_to_entries(&self, _priority: u32) -> anyhow::Result<()> { unreachable!() }
+    /// #     async fn rename_folder(&self, _old_path: &str, _new_path: &str) -> anyhow::Result<()> { unreachable!() }
+    /// #     async fn delete_folder(&self, _path: &str) -> anyhow::Result<()> { unreachable!() }
+    /// # }
+    /// # let provider = Stub;
+    /// let dto = EntriesDTO::new(vec![EntryDraft::new(chrono::Utc::now(), "t".into(), vec![], None, "".into())]);
+    /// tokio::runtime::Runtime::new().unwrap().block_on(async {
+    ///     provider.import_entries(dto).await.unwrap();
+    /// });
+    /// ```
     async fn import_entries(&self, entries_dto: EntriesDTO) -> anyhow::Result<()> {
         debug_assert_eq!(
             TRANSFER_DATA_VERSION, entries_dto.version,
@@ -65,6 +101,16 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// Creates a new `Entry` populated with the given `id` and field values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chrono::Utc;
+    /// let e = Entry::new(1, Utc::now(), "Title".into(), "Body".into(), vec![], None, "inbox".into());
+    /// assert_eq!(e.id, 1);
+    /// assert_eq!(e.folder, "inbox");
+    /// ```
     #[allow(dead_code)]
     pub fn new(
         id: u32,
@@ -86,6 +132,21 @@ impl Entry {
         }
     }
 
+    /// Create an `Entry` by copying all fields from an `EntryDraft` and assigning the provided `id`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chrono::Utc;
+    ///
+    /// let draft = EntryDraft::new(Utc::now(), "Title".into(), vec!["tag".into()], None, "inbox".into())
+    ///     .with_content("body".into());
+    /// let entry = Entry::from_draft(7, draft);
+    /// assert_eq!(entry.id, 7);
+    /// assert_eq!(entry.title, "Title");
+    /// assert_eq!(entry.content, "body");
+    /// assert_eq!(entry.folder, "inbox");
+    /// ```
     pub fn from_draft(id: u32, draft: EntryDraft) -> Self {
         Self {
             id,
@@ -110,6 +171,20 @@ pub struct EntryDraft {
 }
 
 impl EntryDraft {
+    /// Creates an `EntryDraft` populated with the provided metadata and an empty `content`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chrono::{NaiveDate, Utc, TimeZone, DateTime};
+    /// let date: DateTime<Utc> = Utc.from_utc_datetime(&NaiveDate::from_ymd_opt(2020, 1, 1).unwrap().and_hms_opt(0,0,0).unwrap());
+    /// let draft = EntryDraft::new(date, "Title".into(), vec!["tag".into()], Some(1), "inbox".into());
+    /// assert_eq!(draft.content, "");
+    /// assert_eq!(draft.title, "Title");
+    /// assert_eq!(draft.tags, vec!["tag"]);
+    /// assert_eq!(draft.priority, Some(1));
+    /// assert_eq!(draft.folder, "inbox");
+    /// ```
     pub fn new(
         date: DateTime<Utc>,
         title: String,
@@ -128,18 +203,62 @@ impl EntryDraft {
         }
     }
 
+    /// Creates a new draft with its `content` replaced by the provided string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let draft = EntryDraft::new(chrono::Utc::now(), "title".into(), vec![], None, "".into());
+    /// let updated = draft.with_content("body".to_string());
+    /// assert_eq!(updated.content, "body");
+    /// ```
     #[must_use]
     pub fn with_content(mut self, content: String) -> Self {
         self.content = content;
         self
     }
 
+    /// Sets the draft's folder path and returns the updated draft.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let draft = EntryDraft::new(
+    ///     chrono::Utc::now(),
+    ///     "title".into(),
+    ///     Vec::new(),
+    ///     None,
+    ///     "old".into(),
+    /// ).with_folder("new".into());
+    /// assert_eq!(draft.folder, "new");
+    /// ```
     #[must_use]
     pub fn with_folder(mut self, folder: String) -> Self {
         self.folder = folder;
         self
     }
 
+    /// Constructs an `EntryDraft` by copying all fields from an `Entry` except the `id`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let entry = Entry {
+    ///     id: 42,
+    ///     date: chrono::DateTime::from_utc(chrono::NaiveDate::from_ymd(2020, 1, 1).and_hms(0,0,0), chrono::Utc),
+    ///     title: "t".into(),
+    ///     content: "c".into(),
+    ///     tags: vec!["a".into()],
+    ///     priority: Some(1),
+    ///     folder: "f".into(),
+    /// };
+    /// let draft = EntryDraft::from_entry(entry);
+    /// assert_eq!(draft.title, "t");
+    /// assert_eq!(draft.content, "c");
+    /// assert_eq!(draft.tags, vec!["a"]);
+    /// assert_eq!(draft.priority, Some(1));
+    /// assert_eq!(draft.folder, "f");
+    /// ```
     pub fn from_entry(entry: Entry) -> Self {
         Self {
             date: entry.date,
@@ -176,6 +295,20 @@ mod tests {
 
     use super::*;
 
+    /// Creates a fixed `EntryDraft` used by tests.
+    ///
+    /// The draft has a deterministic timestamp, title, content, tags, priority, and folder.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let d = sample_draft();
+    /// assert_eq!(d.title, "Draft");
+    /// assert_eq!(d.content, "Body");
+    /// assert_eq!(d.tags, vec!["one".to_string(), "two".to_string()]);
+    /// assert_eq!(d.priority, Some(3));
+    /// assert_eq!(d.folder, "work");
+    /// ```
     fn sample_draft() -> EntryDraft {
         EntryDraft {
             date: Utc.with_ymd_and_hms(2024, 1, 2, 3, 4, 5).unwrap(),
@@ -236,6 +369,20 @@ mod tests {
             unreachable!("not used in these tests");
         }
 
+        /// Renames a folder from `old_path` to `new_path` in the data provider.
+        ///
+        /// # Returns
+        /// `Ok(())` if the rename succeeded, `Err` containing an error otherwise.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// use futures::executor::block_on;
+        ///
+        /// // `provider` implements `DataProvider`.
+        /// // block_on can be used in examples to run the async method:
+        /// // block_on(provider.rename_folder("notes/old", "notes/new")).unwrap();
+        /// ```
         async fn rename_folder(&self, _old_path: &str, _new_path: &str) -> anyhow::Result<()> {
             unreachable!("not used in these tests");
         }
@@ -327,6 +474,18 @@ mod tests {
         assert_eq!(added_entries, entries);
     }
 
+    /// Ensures that importing entries stops when `add_entry` returns an error and that entries added before the error are preserved in order.
+    ///
+    /// This test configures a stub to fail on the second `add_entry` call, invokes `import_entries` with three drafts,
+    /// asserts the error message is `"fail on 1"`, and verifies only the first two drafts were recorded by the stub.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Setup: stub configured to fail on call index 1
+    /// // Call import_entries with three drafts and expect an error.
+    /// // Verify the stub recorded only the first two drafts in order.
+    /// ```
     #[tokio::test]
     async fn import_entries_stops_on_error() {
         let provider = ImportStubProvider::new(Some(1));

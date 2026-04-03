@@ -26,6 +26,15 @@ pub struct ViewModePopup {
 }
 
 impl ViewModePopup {
+    /// Creates a new `ViewModePopup` with the given current view mode and initializes the hovered option to the same mode.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let popup = ViewModePopup::new(ViewMode::Flat);
+    /// assert_eq!(popup.current, ViewMode::Flat);
+    /// assert_eq!(popup.hovered, ViewMode::Flat);
+    /// ```
     pub fn new(current: ViewMode) -> Self {
         Self {
             current,
@@ -33,6 +42,22 @@ impl ViewModePopup {
         }
     }
 
+    /// Render the centered "Switch View Mode" popup into the provided frame.
+    ///
+    /// The popup is centered to a 60x40 area and displays:
+    /// - a hint line with key bindings,
+    /// - two selectable option blocks for `Flat` and `Folder` view modes (each styled according to hovered/current state),
+    /// - a footer that shows the currently active view mode.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::app::ui::view_mode_popup::{ViewModePopup, ViewMode};
+    ///
+    /// let popup = ViewModePopup::new(ViewMode::Flat);
+    /// // In a real UI context you'd call:
+    /// // popup.render_widget(&mut frame, area, &styles);
+    /// ```
     pub fn render_widget(&self, frame: &mut Frame, area: Rect, styles: &super::Styles) {
         let area = centered_rect(60, 40, area);
         frame.render_widget(Clear, area);
@@ -80,6 +105,21 @@ impl ViewModePopup {
         frame.render_widget(footer, inner[6]);
     }
 
+    /// Renders a single selectable option block for a view mode inside the given area.
+    ///
+    /// The option displays `label` (with a checkmark when it matches the current mode),
+    /// a `description` paragraph, and visual styling that reflects whether the option is
+    /// currently hovered or is the active mode. The rendered widget is written to `frame`
+    /// at `area`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Construct a popup and render its options into an existing frame/area.
+    /// let popup = ViewModePopup::new(ViewMode::Flat);
+    /// // `frame`, `area`, and `styles` would come from the calling UI code/context.
+    /// // popup.render_widget(&mut frame, area, &styles);
+    /// ```
     fn render_option(
         &self,
         frame: &mut Frame,
@@ -123,6 +163,27 @@ impl ViewModePopup {
         frame.render_widget(desc, area);
     }
 
+    /// Handle a keyboard event to navigate, apply, or cancel the view-mode popup.
+    ///
+    /// Interprets the provided `input` and updates `self.hovered` when moving between options.
+    /// - `Esc`, `q`, or `Ctrl+C` cancel the popup.
+    /// - `1` or `2` immediately apply `Flat` or `Folder` respectively.
+    /// - `Up`/`k` and `Down`/`j` move the hovered selection without closing the popup.
+    /// - `Enter` applies the currently hovered mode.
+    ///
+    /// # Returns
+    ///
+    /// `PopupReturn::Apply(mode)` when a mode is chosen, `PopupReturn::Cancel` when cancelled,
+    /// and `PopupReturn::KeepPopup` when the popup should remain open.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut popup = ViewModePopup::new(ViewMode::Flat);
+    /// let input = Input { key_code: KeyCode::Char('2'), modifiers: KeyModifiers::empty() };
+    /// let result = popup.handle_input(&input);
+    /// assert!(matches!(result, PopupReturn::Apply(ViewMode::Folder)));
+    /// ```
     pub fn handle_input(&mut self, input: &Input) -> PopupReturn<ViewMode> {
         let has_ctrl = input.modifiers.contains(KeyModifiers::CONTROL);
         match input.key_code {

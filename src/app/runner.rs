@@ -67,6 +67,25 @@ pub async fn run<B: Backend>(
     }
 }
 
+/// Runs the application's main event loop: initializes UI and app state, processes a pending CLI command,
+/// loads entries, sets the initial selection, renders the UI, and then continuously handles input events
+/// until the input stream ends or an exit request occurs.
+///
+/// On `HandleInputReturnType::Handled` or `NotFound` the UI is re-rendered as appropriate. On
+/// `HandleInputReturnType::ExitApp` the app's state is persisted (errors are logged) and the function
+/// returns `Ok(())`. Errors encountered while handling input are displayed in the UI and cause a redraw.
+///
+/// # Examples
+///
+/// ```no_run
+/// use tui::terminal::Terminal;
+/// use tui::backend::Backend;
+/// use futures::executor::block_on;
+///
+/// // Prepare a terminal, data provider, settings, styles, and optional command as appropriate for your app.
+/// // Then run the main loop:
+/// // block_on(run_intern(&mut terminal, data_provider, settings, styles, pending_cmd)).unwrap();
+/// ```
 async fn run_intern<B, D>(
     terminal: &mut Terminal<B>,
     data_provider: D,

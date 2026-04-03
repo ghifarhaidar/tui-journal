@@ -14,6 +14,22 @@ pub fn exec_back_editor_to_normal_mode(ui_components: &mut UIComponents) -> CmdR
     Ok(HandleInputReturnType::Handled)
 }
 
+/// Save the editor's current entry content into the application storage if an entry is selected.
+///
+/// If the editor has no associated entry id, the call returns without saving anything.
+///
+/// # Returns
+///
+/// `Ok(HandleInputReturnType::Handled)` on success; returns an error if persisting the entry content fails.
+///
+/// # Examples
+///
+/// ```
+/// // Within an async context:
+/// # async fn _example(mut ui_components: crate::ui::UIComponents<'_>, mut app: crate::app::App<impl crate::data::DataProvider>) {
+/// let _ = crate::commands::exec_save_entry_content(&mut ui_components, &mut app).await;
+/// # }
+/// ```
 pub async fn exec_save_entry_content<D: DataProvider>(
     ui_components: &mut UIComponents<'_>,
     app: &mut App<D>,

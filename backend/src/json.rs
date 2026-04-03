@@ -102,6 +102,23 @@ impl DataProvider for JsonDataProvide {
         Ok(EntriesDTO::new(entries))
     }
 
+    /// Assigns the given priority to all entries that do not already have one.
+    ///
+    /// Only entries whose `priority` is `None` are updated. The updated entries are persisted
+    /// to the provider's JSON file only if at least one entry was changed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::path::PathBuf;
+    /// # use tokio::runtime::Runtime;
+    /// # // Setup: assume `JsonDataProvide::new` exists and the file contains entries with no priority.
+    /// # let provider = JsonDataProvide::new(PathBuf::from("test_data.json"));
+    /// let rt = Runtime::new().unwrap();
+    /// rt.block_on(async {
+    ///     provider.assign_priority_to_entries(5).await.unwrap();
+    /// });
+    /// ```
     async fn assign_priority_to_entries(&self, priority: u32) -> anyhow::Result<()> {
         let mut entries = self.load_all_entries().await?;
         let mut modified = false;
@@ -121,6 +138,27 @@ impl DataProvider for JsonDataProvide {
         Ok(())
     }
 
+    /// Rename folder paths for stored entries and persist changes when necessary.
+    ///
+    /// Updates any entry whose `folder` equals `old_path` to `new_path`. For entries whose `folder` starts with
+    /// the prefix `old_path/`, replaces that prefix with `new_path` while preserving the remainder of the path.
+    /// If no entries are modified, the underlying storage is not written.
+    ///
+    /// Errors if loading or writing entries fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::path::PathBuf;
+    /// # use tokio::runtime::Runtime;
+    /// # // Assume JsonDataProvide and its methods are available in scope.
+    /// # let rt = Runtime::new().unwrap();
+    /// rt.block_on(async {
+    ///     let provider = JsonDataProvide::new(PathBuf::from("data.json"));
+    ///     // Rename folder "projects/old" to "projects/new"
+    ///     provider.rename_folder("projects/old", "projects/new").await.unwrap();
+    /// });
+    /// ```
     async fn rename_folder(&self, old_path: &str, new_path: &str) -> anyhow::Result<()> {
         let mut entries = self.load_all_entries().await?;
         let mut modified = false;
@@ -144,6 +182,21 @@ impl DataProvider for JsonDataProvide {
         Ok(())
     }
 
+    /// Deletes the folder at `path` and all entries contained in that folder or any of its subfolders,
+    /// persisting changes only if any entries were removed.
+    ///
+    /// The function removes entries whose `folder` is exactly `path` or starts with `"{path}/"`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Remove a folder and its subfolders from the JSON-backed provider.
+    /// let provider = JsonDataProvide::new("data.json".into());
+    /// // This call deletes entries in "projects/old" and "projects/old/sub".
+    /// tokio::runtime::Runtime::new().unwrap().block_on(async {
+    ///     provider.delete_folder("projects/old").await.unwrap();
+    /// });
+    /// ```
     async fn delete_folder(&self, path: &str) -> anyhow::Result<()> {
         let mut entries = self.load_all_entries().await?;
         let old_len = entries.len();

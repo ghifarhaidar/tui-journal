@@ -12,6 +12,18 @@ pub struct Input {
 }
 
 impl Input {
+    /// Constructs an `Input` from a `KeyCode` and `KeyModifiers`.
+    ///
+    /// The returned `Input` stores the provided `key_code` and `modifiers` and
+    /// populates its `key_event` field by creating a corresponding `KeyEvent`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let input = Input::new(KeyCode::Char('x'), KeyModifiers::CTRL);
+    /// assert_eq!(input.key_code, KeyCode::Char('x'));
+    /// assert!(input.modifiers.contains(KeyModifiers::CTRL));
+    /// ```
     pub fn new(key_code: KeyCode, modifiers: KeyModifiers) -> Self {
         Self {
             key_code,
@@ -22,6 +34,18 @@ impl Input {
 }
 
 impl From<&KeyEvent> for Input {
+    /// Constructs an `Input` from a referenced `KeyEvent`, copying the event's `code` and
+    /// `modifiers` and storing a copy of the full `KeyEvent`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let ev = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+    /// let input = Input::from(&ev);
+    /// assert_eq!(input.key_code, ev.code);
+    /// assert_eq!(input.modifiers, ev.modifiers);
+    /// assert_eq!(input.key_event, ev);
+    /// ```
     fn from(key_event: &KeyEvent) -> Self {
         Self {
             key_code: key_event.code,
@@ -93,6 +117,14 @@ impl Keymap {
     }
 }
 
+/// Provide global key mappings for application-level UI commands.
+///
+/// # Examples
+///
+/// ```
+/// let maps = get_global_keymaps();
+/// assert!(!maps.is_empty());
+/// ```
 pub(crate) fn get_global_keymaps() -> Vec<Keymap> {
     vec![
         Keymap::new(
@@ -169,6 +201,18 @@ pub(crate) fn get_global_keymaps() -> Vec<Keymap> {
     ]
 }
 
+/// Key mappings for the entries-list view.
+///
+/// Provides the hard-coded bindings used when browsing the entries list, including
+/// selection movement, create/edit/delete, export and external edit, filtering and
+/// fuzzy find, sorting, paging, multi-select, and folder navigation/rename.
+///
+/// # Examples
+///
+/// ```
+/// let maps = get_entries_list_keymaps();
+/// assert!(maps.iter().any(|m| m.command == UICommand::CreateEntry));
+/// ```
 pub fn get_entries_list_keymaps() -> Vec<Keymap> {
     vec![
         Keymap::new(

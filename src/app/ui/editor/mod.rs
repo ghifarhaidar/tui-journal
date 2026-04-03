@@ -46,6 +46,21 @@ impl From<&Input> for KeyEvent {
 }
 
 impl<'a> Editor<'a> {
+    /// Creates a new Editor initialized with a default TextArea and Normal mode.
+    ///
+    /// The returned editor is inactive, not dirty, has no unsaved changes, and is not
+    /// associated with any entry (`entry_id` is `None`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let editor = Editor::new();
+    /// assert_eq!(editor.get_editor_mode(), EditorMode::Normal);
+    /// assert!(!editor.is_active);
+    /// assert!(!editor.is_dirty);
+    /// assert!(!editor.has_unsaved());
+    /// assert_eq!(editor.get_current_entry_id(), None);
+    /// ```
     pub fn new() -> Editor<'a> {
         let text_area = TextArea::default();
 
@@ -74,6 +89,29 @@ impl<'a> Editor<'a> {
         matches!(self.mode, EditorMode::Insert | EditorMode::Visual)
     }
 
+    /// Loads the given entry into the editor's text area and updates editor state accordingly.
+    ///
+    /// If `entry_id` is `Some(id)` and `app.get_entry(id)` returns an entry, the editor's text area
+    /// is populated with the entry's content, the editor's dirty flag is cleared, and the cursor is
+    /// moved to the end of the content. If `entry_id` is `None` or the entry is not found, the editor
+    /// resets to an empty text area. In all cases the editor's `entry_id` is updated and the
+    /// unsaved-state is recomputed via `refresh_has_unsaved`.
+    ///
+    /// # Parameters
+    ///
+    /// - `entry_id`: ID of the entry to load, or `None` to clear the editor.
+    /// - `app`: application context used to look up entries and recompute unsaved state.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Assuming `app` implements the required `DataProvider` API:
+    /// let mut editor = Editor::new();
+    /// // Load no entry (clear)
+    /// editor.set_current_entry(None, &app);
+    /// // Load entry with id 42
+    /// editor.set_current_entry(Some(42), &app);
+    /// ```
     pub fn set_current_entry<D: DataProvider>(&mut self, entry_id: Option<u32>, app: &App<D>) {
         let text_area = match entry_id {
             Some(id) => {
@@ -97,10 +135,34 @@ impl<'a> Editor<'a> {
         self.refresh_has_unsaved(app);
     }
 
+    /// Retrieves the ID of the currently loaded entry, if any.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let editor = Editor::new();
+    /// assert_eq!(editor.get_current_entry_id(), None);
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// `Some(id)` if an entry is loaded, `None` otherwise.
     pub fn get_current_entry_id(&self) -> Option<u32> {
         self.entry_id
     }
 
+    /// Handles input that should be prioritized when the editor is in Insert mode.
+    ///
+    /// When the editor is in Insert mode, this processes OS clipboard shortcuts (Ctrl+X/C/V)
+    /// if application settings enable OS clipboard sync; if a clipboard shortcut is handled,
+    /// the function returns immediately. Otherwise the input is forwarded to the underlying
+    /// text area; if that input mutates the buffer, the editor is marked dirty and unsaved
+    /// state is refreshed.
+    ///
+    /// # Returns
+    ///
+    /// `Handled` if the input was processed by the editor (including clipboard operations),
+    /// `NotFound` if the editor was not in Insert mode and the input was not handled.
     pub fn handle_input_prioritized<D: DataProvider>(
         &mut self,
         input: &Input,
@@ -467,6 +529,21 @@ impl<'a> Editor<'a> {
         self.has_unsaved
     }
 
+    /// Recomputes whether the editor's content differs from the currently loaded entry and updates `has_unsaved`.
+    ///
+    /// This sets `has_unsaved` to `true` only when the editor is dirty and an entry identified by
+    /// `self.entry_id` exists whose stored content is different from the editor's current content.
+    /// Otherwise `has_unsaved` is set to `false`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Given `editor` and `app` are available and `editor.entry_id` refers to a loaded entry:
+    /// // editor.is_dirty = true;
+    /// // editor.refresh_has_unsaved(&app);
+    /// //
+    /// // After the call, `editor.has_unsaved` reflects whether the editor content differs from the entry.
+    /// ```
     pub fn refresh_has_unsaved<D: DataProvider>(&mut self, app: &App<D>) {
         self.has_unsaved = match self.is_dirty {
             true => {

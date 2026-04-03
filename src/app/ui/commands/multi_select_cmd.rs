@@ -14,6 +14,18 @@ use super::{
     editor_cmd::{discard_current_content, exec_save_entry_content},
 };
 
+/// Attempts to enable multi-select mode for entries, handling guards and unsaved changes.
+///
+/// If the app is in folder navigation mode or multi-select is already active, this does nothing.
+/// If there are unsaved changes, an unsaved confirmation dialog is shown (with a command to continue entering multi-select mode); otherwise multi-select mode is enabled immediately.
+/// Returns `Ok(HandleInputReturnType::Handled)` in all cases.
+///
+/// # Examples
+///
+/// ```
+/// // Prepare `ui_components` and `app`, then:
+/// let _ = exec_enter_select_mode(&mut ui_components, &app);
+/// ```
 pub fn exec_enter_select_mode<D: DataProvider>(
     ui_components: &mut UIComponents,
     app: &App<D>,

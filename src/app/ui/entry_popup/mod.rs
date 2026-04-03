@@ -61,6 +61,22 @@ pub enum EntryPopupInputReturn {
 }
 
 impl EntryPopup<'_> {
+    /// Creates a new `EntryPopup` prepopulated for creating a journal entry.
+    ///
+    /// The popup is initialized with empty title, tags, and folder inputs; the date
+    /// field is set to the current local date formatted as `DD-MM-YYYY`; and the
+    /// priority field is set from `settings.default_journal_priority` if present.
+    /// The popup starts in create mode with focus on the title field and no active
+    /// overlays or validation errors.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let settings = Settings { default_journal_priority: Some(2) };
+    /// let popup = EntryPopup::new_entry(&settings);
+    /// assert!(!popup.is_edit_entry);
+    /// assert_eq!(popup.active_txt, ActiveText::Title);
+    /// ```
     pub fn new_entry(settings: &Settings) -> Self {
         let title_txt = TextArea::default();
 
@@ -101,6 +117,27 @@ impl EntryPopup<'_> {
         }
     }
 
+    /// Creates an `EntryPopup` pre-filled from an existing `Entry`.
+    ///
+    /// The popup's title, date (formatted as `DD-MM-YYYY`), tags (joined with `, `),
+    /// folder, and priority fields are populated from `entry`. The cursor for each
+    /// text field is moved to the end, focus is set to the title, the popup is
+    /// marked as edit mode, and all fields are validated.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let entry = Entry {
+    ///     title: "My title".into(),
+    ///     date: chrono::Utc.with_ymd_and_hms(2020, 5, 1, 0, 0, 0),
+    ///     tags: vec!["a".into(), "b".into()],
+    ///     folder: "Inbox".into(),
+    ///     priority: Some(3),
+    /// };
+    /// let popup = EntryPopup::from_entry(&entry);
+    /// assert!(popup.is_edit_entry);
+    /// assert_eq!(popup.title_txt.lines()[0], "My title");
+    /// ```
     pub fn from_entry(entry: &Entry) -> Self {
         let mut title_txt = TextArea::new(vec![entry.title.to_owned()]);
         title_txt.move_cursor(CursorMove::End);
@@ -147,6 +184,20 @@ impl EntryPopup<'_> {
         entry_popup
     }
 
+    /// Render the entry creation/editing popup into the given frame area.
+    ///
+    /// This draws the popup window (titled "Create journal" or "Edit journal" depending on mode),
+    /// lays out and renders the five input rows (Title, Date, Tags, Folder, Priority) and the footer,
+    /// applies active/invalid visual styles and cursor styles per-field, and overlays the tags or
+    /// folders popup widgets if they are currently active.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Render into an existing terminal frame/area/styles
+    /// let mut popup = EntryPopup::new_entry(&settings);
+    /// popup.render_widget(&mut frame, area, &styles);
+    /// ```
     pub fn render_widget(&mut self, frame: &mut Frame, area: Rect, styles: &Styles) {
         let area = centered_rect_exact_height(70, 20, area);
 
@@ -333,6 +384,19 @@ impl EntryPopup<'_> {
         }
     }
 
+    /// Checks whether all input fields have passed validation.
+    ///
+    /// Returns `true` if every tracked validation error message (title, date, tags, priority, folder) is empty, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use crate::entry_popup::EntryPopup;
+    /// # use crate::settings::Settings;
+    /// let settings = Settings::default();
+    /// let popup = EntryPopup::new_entry(&settings);
+    /// let valid = popup.is_input_valid();
+    /// ```
     pub fn is_input_valid(&self) -> bool {
         self.title_err_msg.is_empty()
             && self.date_err_msg.is_empty()
@@ -341,6 +405,15 @@ impl EntryPopup<'_> {
             && self.folder_err_msg.is_empty()
     }
 
+    /// Run validation for every editable field and update each field's error message accordingly.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let settings = Settings::default();
+    /// let mut popup = EntryPopup::new_entry(&settings);
+    /// popup.validate_all();
+    /// ```
     pub fn validate_all(&mut self) {
         self.validate_title();
         self.validate_date();
@@ -387,6 +460,32 @@ impl EntryPopup<'_> {
         }
     }
 
+    /// Handles a key input event for the entry popup, updating fields, focus, popups, or committing/cancelling the entry.
+    ///
+    /// On success, returns an `EntryPopupInputReturn` wrapped in `anyhow::Result` that indicates whether the popup
+    /// should remain open, be cancelled, or create/update an entry.
+    ///
+    /// # Behavior
+    /// - If a tags or folders popup is active, forwards the input to that popup and keeps the main popup open.
+    /// - `Esc` or `Ctrl-c` cancels the popup.
+    /// - `Enter` validates and attempts to confirm the entry (may add or update an entry or keep the popup open on validation errors).
+    /// - `Tab` and `BackTab` cycle focus among Title → Date → Tags → Folder → Priority.
+    /// - `Ctrl-Space` or `Ctrl-t` opens the tags popup initialized with the current tags text.
+    /// - `Ctrl-f` opens the folders popup.
+    /// - Other keys are fed into the currently active text field and trigger its validation where applicable.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crate::{EntryPopup, App, Input, KeyCode, KeyModifiers, DataProvider};
+    /// // Create an EntryPopup and an App, then send a Tab key to cycle focus.
+    /// // The example is illustrative; types and construction are omitted for brevity.
+    /// let mut popup = EntryPopup::new_entry(&Default::default());
+    /// let mut app: App<impl DataProvider> = /* ... */;
+    /// let input = Input { key_code: KeyCode::Tab, modifiers: KeyModifiers::NONE, key_event: Default::default() };
+    /// let result = futures::executor::block_on(popup.handle_input(&input, &mut app)).unwrap();
+    /// assert!(matches!(result, crate::EntryPopupInputReturn::KeepPopup));
+    /// ```
     pub async fn handle_input<D: DataProvider>(
         &mut self,
         input: &Input,
@@ -473,6 +572,21 @@ impl EntryPopup<'_> {
         }
     }
 
+    /// Handles a single input event for the active tags popup.
+    ///
+    /// Processes the popup's `handle_input` result:
+    /// - `Keep`: leave the popup and state unchanged.
+    /// - `Cancel`: close the tags popup (`tags_popup = None`).
+    /// - `Apply(tags_text)`: replace the tags text with `tags_text`, move the cursor to the end,
+    ///   set focus to the Tags field, and close the popup.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Given an `entry_popup` with an active tags popup, calling this will apply the
+    /// // popup's result into the entry popup state:
+    /// // entry_popup.handle_tags_popup_input(&input);
+    /// ```
     pub fn handle_tags_popup_input(&mut self, input: &Input) {
         let tags_popup = self
             .tags_popup
@@ -491,6 +605,20 @@ impl EntryPopup<'_> {
         }
     }
 
+    /// Processes an input event directed at the active folders selection popup.
+    ///
+    /// Expects `self.folders_popup` to be `Some` when called. Delegates the input to the popup and:
+    /// - does nothing for `Keep`;
+    /// - closes the popup for `Cancel`;
+    /// - applies the selected folder, focuses the Folder field, and closes the popup for `Apply`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Assume `popup` is an EntryPopup with `folders_popup` initialized.
+    /// // `input` is an Input event obtained from the UI event loop.
+    /// // popup.handle_folders_popup_input(&input);
+    /// ```
     pub fn handle_folders_popup_input(&mut self, input: &Input) {
         let folders_popup = self
             .folders_popup
@@ -508,6 +636,22 @@ impl EntryPopup<'_> {
         }
     }
 
+    /// Opens the folders selection overlay initialized with the popup's current folder and available folders.
+    ///
+    /// This sets `self.folders_popup` to a new `FoldersPopup` seeded with the current folder text and the list
+    /// returned by `app.get_all_folders()`, and keeps the entry popup open.
+    ///
+    /// # Returns
+    ///
+    /// `EntryPopupInputReturn::KeepPopup` indicating the entry popup remains open while the folders overlay is active.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // given `popup: EntryPopup` and `app: App<_>` in scope
+    /// let result = popup.open_folders_popup(&app);
+    /// assert!(matches!(result, EntryPopupInputReturn::KeepPopup));
+    /// ```
     fn open_folders_popup<D: DataProvider>(&mut self, app: &App<D>) -> EntryPopupInputReturn {
         let folders = app.get_all_folders();
         let current_folder = self.folder_txt.lines()[0].trim().to_string();
@@ -516,11 +660,53 @@ impl EntryPopup<'_> {
         EntryPopupInputReturn::KeepPopup
     }
 
+    /// Replaces the folder input with the provided folder string and moves the cursor to the end.
+    ///
+    /// This sets `folder_txt` to a single-line `TextArea` containing `folder` and places the text cursor after that text.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let settings = Settings::default();
+    /// let mut popup = EntryPopup::new_entry(&settings);
+    /// popup.apply_folder("Work".to_string());
+    /// assert_eq!(popup.folder_txt.lines()[0], "Work");
+    /// ```
     pub fn apply_folder(&mut self, folder: String) {
         self.folder_txt = TextArea::new(vec![folder]);
         self.folder_txt.move_cursor(CursorMove::End);
     }
 
+    /// Finalizes the popup form: validates inputs, parses fields, and either updates the current entry or creates a new one.
+    ///
+    /// If validation fails, the popup remains open and no change is applied. On success, the function parses:
+    /// - `title` from the first title line,
+    /// - `date` from the first date line as `DD-MM-YYYY` and converts it to a UTC datetime at 00:00:00,
+    /// - `tags` from the first tags line via `text_to_tags`,
+    /// - `priority` as an optional `u32` (empty field yields `None`),
+    /// - `folder` from the first folder line trimmed of whitespace.
+    /// It then calls the appropriate `App` method: update when editing, add when creating.
+    ///
+    /// # Returns
+    ///
+    /// `EntryPopupInputReturn::KeepPopup` if validation failed; `EntryPopupInputReturn::UpdateCurrentEntry` if an existing entry was updated; `EntryPopupInputReturn::AddEntry(id)` with the new entry id if a new entry was created. Returns an `Err` if the underlying `App` call fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Synchronous example using a Tokio runtime to await the async method.
+    /// // Assume `popup: EntryPopup` and `app: App<YourDataProvider>` are available and initialized.
+    /// let mut rt = tokio::runtime::Runtime::new().unwrap();
+    /// let mut popup = /* ... */;
+    /// let mut app = /* ... */;
+    /// let result = rt.block_on(async { popup.handle_confirm(&mut app).await }).unwrap();
+    /// match result {
+    ///     EntryPopupInputReturn::KeepPopup => println!("Validation failed"),
+    ///     EntryPopupInputReturn::UpdateCurrentEntry => println!("Entry updated"),
+    ///     EntryPopupInputReturn::AddEntry(id) => println!("Added entry with id {}", id),
+    ///     _ => {}
+    /// }
+    /// ```
     async fn handle_confirm<D: DataProvider>(
         &mut self,
         app: &mut App<D>,

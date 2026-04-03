@@ -61,6 +61,20 @@ impl SqliteDataProvide {
 }
 
 impl DataProvider for SqliteDataProvide {
+    /// Fetches all entries from the database, aggregating their tags and including folder information, ordered by date descending.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example(provider: &crate::sqlite_helper::SqliteDataProvide) {
+    /// let entries = provider.load_all_entries().await.unwrap();
+    /// // `entries` is a Vec<Entry> containing all rows from the `entries` table with tags aggregated.
+    /// # }
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// `Vec<Entry>` containing all entries with their aggregated tags and folder data, ordered by `date` descending.
     async fn load_all_entries(&self) -> anyhow::Result<Vec<Entry>> {
         let entries: Vec<EntryIntermediate> = sqlx::query_as(
             r"SELECT entries.id, entries.title, entries.date, entries.content, entries.priority, entries.folder, GROUP_CONCAT(tags.tag) AS tags
@@ -81,6 +95,30 @@ impl DataProvider for SqliteDataProvide {
         Ok(entries)
     }
 
+    /// Inserts a new entry and its tags into the database and returns the created `Entry`.
+    ///
+    /// The entry's `id` is obtained from the database `RETURNING` clause and used to construct the resulting `Entry`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use crate::{SqliteDataProvide, EntryDraft};
+    /// # async fn __example(provider: &SqliteDataProvide) -> anyhow::Result<()> {
+    /// let draft = EntryDraft {
+    ///     title: "Example".into(),
+    ///     date: 1_700_000_000,
+    ///     content: "Content".into(),
+    ///     priority: None,
+    ///     folder: "inbox".into(),
+    ///     tags: vec!["tag1".into(), "tag2".into()],
+    /// };
+    /// let entry = provider.add_entry(draft).await?;
+    /// assert_eq!(entry.title, "Example");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// @returns `Entry` created from the provided draft with the assigned database `id`.
     async fn add_entry(&self, entry: EntryDraft) -> Result<Entry, ModifyEntryError> {
         let row = sqlx::query(
             r"INSERT INTO entries (title, date, content, priority, folder)
@@ -132,6 +170,23 @@ impl DataProvider for SqliteDataProvide {
         Ok(())
     }
 
+    /// Persists changes to an existing entry and synchronizes its tags in the database.
+    ///
+    /// The entry row (including folder and priority) is updated, tags present in the
+    /// database but not in `entry.tags` are removed, and tags present in `entry.tags`
+    /// but not in the database are inserted.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(entry)` with the same `Entry` on success, `Err(ModifyEntryError)` on failure.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // assuming `provider` is a `SqliteDataProvide` and `entry` is an `Entry`
+    /// let updated = provider.update_entry(entry.clone()).await.unwrap();
+    /// assert_eq!(updated.id, entry.id);
+    /// ```
     async fn update_entry(&self, entry: Entry) -> Result<Entry, ModifyEntryError> {
         sqlx::query(
             r"UPDATE entries
@@ -199,6 +254,18 @@ impl DataProvider for SqliteDataProvide {
         Ok(entry)
     }
 
+    /// Builds an export object containing drafts for the specified entries, including aggregated tags and folder information.
+    ///
+    /// The returned DTO contains EntryDrafts for the provided entry IDs ordered by `date` descending. Tags for each entry are aggregated into a single field on the draft.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example(provider: &SqliteDataProvide) -> anyhow::Result<()> {
+    /// let dto = provider.get_export_object(&[1, 2, 3]).await?;
+    /// // `dto` now contains EntryDrafts for entries with IDs 1, 2, and 3
+    /// # Ok(()) }
+    /// ```
     async fn get_export_object(&self, entries_ids: &[u32]) -> anyhow::Result<EntriesDTO> {
         let ids_text = entries_ids
             .iter()
@@ -232,6 +299,20 @@ impl DataProvider for SqliteDataProvide {
         Ok(EntriesDTO::new(entry_drafts))
     }
 
+    /// Sets the priority for all entries whose `priority` is currently NULL.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example(provider: &SqliteDataProvide) -> anyhow::Result<()> {
+    /// provider.assign_priority_to_entries(1).await?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// # }
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the update succeeds, `Err` containing the error otherwise.
     async fn assign_priority_to_entries(&self, priority: u32) -> anyhow::Result<()> {
         let sql = format!(
             r"UPDATE entries
@@ -251,6 +332,29 @@ impl DataProvider for SqliteDataProvide {
         Ok(())
     }
 
+    /// Renames a folder path and all its descendant folders for matching entries.
+    ///
+    /// Updates `entries.folder` so that rows where `folder == old_path` are set to
+    /// `new_path`, and rows where `folder` starts with `old_path/` are rewritten to
+    /// keep the suffix after `old_path/` while replacing the prefix with `new_path`.
+    ///
+    /// # Parameters
+    ///
+    /// - `old_path`: The existing folder path to rename.
+    /// - `new_path`: The new folder path to apply to matching entries.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, an `anyhow::Error` if the database update fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # async fn example(provider: &SqliteDataProvide) -> anyhow::Result<()> {
+    /// provider.rename_folder("projects/old", "projects/new").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     async fn rename_folder(&self, old_path: &str, new_path: &str) -> anyhow::Result<()> {
         sqlx::query(
             r"UPDATE entries
@@ -273,6 +377,28 @@ impl DataProvider for SqliteDataProvide {
         Ok(())
     }
 
+    /// Deletes all entries whose folder equals the given path or is a descendant of it.
+    ///
+    /// The `path` argument is matched exactly and also as a prefix followed by a slash,
+    /// so entries with `folder = path` or `folder` starting with `path/` will be removed.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: folder path to delete (matches exact folder and all nested subfolders).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use anyhow::Result;
+    /// # async fn run(p: &crate::sqlite_helper::SqliteDataProvide) -> Result<()> {
+    /// p.delete_folder("projects/old").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     async fn delete_folder(&self, path: &str) -> anyhow::Result<()> {
         sqlx::query(
             r"DELETE FROM entries

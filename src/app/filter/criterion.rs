@@ -62,6 +62,21 @@ mod tests {
 
     use super::*;
 
+    /// Creates a sample `Entry` used by tests with the given tags and optional priority.
+    ///
+    /// The returned `Entry` has a fixed id, timestamp (2024-01-02T03:04:05Z), title
+    /// "Rust Search", and content "Searching CONTENT with Mixed Case". The `tags`
+    /// are converted from `&str` to `String`; `priority` is used verbatim. The final
+    /// trailing string field is an empty `String`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let e = sample_entry(vec!["alpha", "beta"], Some(2));
+    /// assert_eq!(e.title, "Rust Search");
+    /// assert_eq!(e.tags, vec!["alpha".to_string(), "beta".to_string()]);
+    /// assert_eq!(e.priority, Some(2));
+    /// ```
     fn sample_entry(tags: Vec<&str>, priority: Option<u32>) -> Entry {
         Entry::new(
             1,
